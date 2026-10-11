@@ -27,9 +27,12 @@ flowchart TD
         Transcribe["audio.transcribe() (Blob / Buffer / ArrayBuffer)"]
     end
 
-    subgraph DialectEngine ["Dialect Integrity (src/dialects/)"]
+    subgraph DialectEngine ["Dialect Integrity & Guardrails (src/dialects/)"]
         Guards["applyDialectGuard()"]
         Prompts["prompts.ts (Yoruba, Hausa, Igbo, Pidgin)"]
+        DriftGuard["Negative Constraints & Lexical Anchors"]
+        Guards --> Prompts
+        Prompts --> DriftGuard
     end
 
     subgraph WebStreamsParser ["Zero-Dependency SSE Parser (src/utils/stream.ts)"]
@@ -39,7 +42,6 @@ flowchart TD
     Natlas --> ChatResource
     Natlas --> AudioResource
     ChatResource --> Guards
-    Guards --> Prompts
     Stream --> Parser
 ```
 
@@ -47,12 +49,14 @@ flowchart TD
 
 ## Highlights
 
-- **Zero Runtime Dependencies**: Built entirely on native web standards (`fetch`, `ReadableStream`, `FormData`, `Blob`). Zero security vulnerabilities, instant installation, and universal runtime compatibility.
-- **Universal JavaScript Support**: Runs seamlessly across **Node.js 18+**, **Next.js (App & Pages Router, Edge & Node runtimes)**, **Vercel Edge**, **Cloudflare Workers**, **Bun**, and the **Browser**.
-- **Dialect Guards & Tone Integrity**: Automatic system prompt injection preventing language drift back to English for **Yorùbá, Hausa, Igbo, and Nigerian Pidgin**.
-- **Real-Time Token Streaming**: Native async generator `client.chat.stream()` for responsive UI applications.
+- **Zero Runtime Dependencies**: Built entirely on native web standards (`fetch`, `ReadableStream`, `FormData`, `Blob`). Zero vulnerabilities, zero package bloat, instant installation, and universal runtime compatibility.
+- **Universal JavaScript Support**: Runs seamlessly across **Node.js 18+**, **Next.js (App & Pages Router, Edge & Node runtimes)**, **Vercel Edge Functions**, **Cloudflare Workers**, **Bun**, and modern **Browsers**.
+- **Dialect Guards & Anti-Drift Engine**: Automatic system prompt injection preventing language drift back to English or cross-dialect contamination for **Yorùbá, Hausa, Igbo, and Nigerian Pidgin**.
+  - **Hardened Pidgin Guard**: Enforces strict negative constraints against Yoruba/Igbo/Hausa bleed, loaded with authentic Nigerian Pidgin lexical anchors (`wetin`, `dey`, `abeg`, `sha`, `no wahala`, `kwanu`).
+- **Wire Protocol Forwarding**: Active forwarding of `language` and `tone_enforcement` parameters directly to backend inference servers.
+- **Real-Time Token Streaming**: Native async generator `client.chat.stream()` consuming Server-Sent Events (SSE) for responsive UI applications.
 - **Multilingual Voice/ASR**: Direct integration with official `NCAIR1` Whisper checkpoints (`Yoruba-ASR`, `Hausa-ASR`, `Igbo-ASR`, `NigerianAccentedEnglish`).
-- **Dual Output Packaging**: Emits modern ESM (`dist/index.mjs`), CommonJS (`dist/index.js`), and TypeScript definitions (`dist/index.d.ts`).
+- **Dual Output Packaging**: Emits modern ESM (`dist/index.mjs`), CommonJS (`dist/index.js`), and strict TypeScript declarations (`dist/index.d.ts`).
 
 ---
 
@@ -87,11 +91,16 @@ const response = await client.chat.create({
 console.log(response.choices[0].message.content);
 ```
 
-### Real-Time Streaming
+### Real-Time Streaming with Dialect Integrity
 ```typescript
+import { Natlas } from "@natlas/sdk";
+
+const client = new Natlas({ baseURL: "http://127.0.0.1:8000/v1" });
+
 for await (const chunk of client.chat.stream({
-  language: "hausa",
-  messages: [{ role: "user", content: "Barka dai!" }],
+  language: "pidgin",
+  toneEnforcement: true,
+  messages: [{ role: "user", content: "Wetin be the best way to register business for CAC?" }],
 })) {
   process.stdout.write(chunk.choices[0]?.delta?.content ?? "");
 }
@@ -99,31 +108,40 @@ for await (const chunk of client.chat.stream({
 
 ### Audio / Voice Note Transcription
 ```typescript
+import { Natlas } from "@natlas/sdk";
+
+const client = new Natlas({ baseURL: "http://127.0.0.1:8000/v1" });
+
 const result = await client.audio.transcribe({
   file: audioBlobOrBuffer,
   language: "yoruba",
 });
 
-console.log(result.text);
+console.log("Transcribed Text:", result.text);
 ```
 
 ---
 
-## Running in Next.js Route Handlers (Edge & Node)
+## Next.js Route Handlers (Edge & Node)
+
+Because `@natlas/sdk` has zero external dependencies, it works out-of-the-box in Next.js Edge runtime handlers without polyfills:
 
 ```typescript
 // app/api/chat/route.ts
 import { Natlas } from "@natlas/sdk";
 
-export const runtime = "edge"; // Zero dependencies makes it 100% Edge-ready!
+export const runtime = "edge"; // 100% Edge runtime compatible!
 
-const client = new Natlas();
+const client = new Natlas({
+  baseURL: process.env.NATLAS_BASE_URL || "http://127.0.0.1:8000/v1",
+});
 
 export async function POST(req: Request) {
-  const { messages, language } = await req.json();
+  const { messages, language, toneEnforcement } = await req.json();
 
   const stream = client.chat.stream({
     language,
+    toneEnforcement,
     messages,
   });
 
@@ -139,7 +157,10 @@ export async function POST(req: Request) {
   });
 
   return new Response(readable, {
-    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
   });
 }
 ```
@@ -149,7 +170,13 @@ export async function POST(req: Request) {
 ## Development & Testing
 
 ```bash
+# Install dependencies
 pnpm install
+
+# Run test suite
 pnpm test
+
+# Type checking and build
+pnpm exec tsc --noEmit --skipLibCheck
 pnpm build
 ```
