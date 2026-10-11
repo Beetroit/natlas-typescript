@@ -38,6 +38,8 @@ export class Chat {
     const body = {
       model: options.model ?? "NCAIR1/N-ATLaS",
       messages: guardedMessages,
+      language: options.language,
+      tone_enforcement: options.toneEnforcement ?? true,
       temperature: options.temperature ?? 0.1,
       repetition_penalty: options.repetitionPenalty ?? 1.12,
       max_tokens: options.maxTokens ?? 1024,
@@ -80,6 +82,8 @@ export class Chat {
     const body = {
       model: options.model ?? "NCAIR1/N-ATLaS",
       messages: guardedMessages,
+      language: options.language,
+      tone_enforcement: options.toneEnforcement ?? true,
       temperature: options.temperature ?? 0.1,
       repetition_penalty: options.repetitionPenalty ?? 1.12,
       max_tokens: options.maxTokens ?? 1024,
