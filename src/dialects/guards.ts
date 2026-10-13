@@ -7,31 +7,42 @@ export function applyDialectGuard(
   toneEnforcement = true
 ): ChatMessage[] {
   if (!language || !toneEnforcement) {
-    return [...messages];
+    return messages.slice();
   }
 
   const prompt = getSystemPrompt(language);
-  const result: ChatMessage[] = [];
-  let foundSystem = false;
+  const len = messages.length;
 
-  for (const msg of messages) {
-    if (msg.role === "system") {
+  let foundSystem = false;
+  for (let i = 0; i < len; i++) {
+    if (messages[i].role === "system") {
       foundSystem = true;
-      result.push({
-        role: "system",
-        content: `${prompt}\n\nAdditional instructions:\n${msg.content}`,
-      });
-    } else {
-      result.push({ ...msg });
+      break;
     }
   }
 
+  // Speed optimization: avoid unnecessary shallow object cloning ({ ...msg })
+  // and pre-allocate fixed-length array to minimize allocations/garbage collection.
   if (!foundSystem) {
-    result.unshift({
-      role: "system",
-      content: prompt,
-    });
+    const result = new Array<ChatMessage>(len + 1);
+    result[0] = { role: "system", content: prompt };
+    for (let i = 0; i < len; i++) {
+      result[i + 1] = messages[i];
+    }
+    return result;
   }
 
+  const result = new Array<ChatMessage>(len);
+  for (let i = 0; i < len; i++) {
+    const msg = messages[i];
+    if (msg.role === "system") {
+      result[i] = {
+        role: "system",
+        content: `${prompt}\n\nAdditional instructions:\n${msg.content}`,
+      };
+    } else {
+      result[i] = msg;
+    }
+  }
   return result;
 }
